@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pointcloud Sphere Pulse Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        #controls.minimized {
+            display: none;
+        }
+        
+        #controls h3 {
+            margin: 0 0 10px 0;
+            color: #fff;
+        }
+        
+        #controls p {
+            margin: 5px 0;
+            color: #ccc;
+        }
+        
+        button {
+            background: #333;
+            color: white;
+            border: 1px solid #555;
+            padding: 8px 12px;
+            margin: 5px 5px 5px 0;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        
+        button:hover {
+            background: #555;
+        }
+        
+        #exportStatus {
+            margin-top: 10px;
+            padding: 5px;
+            border-radius: 3px;
+            display: none;
+        }
+        
+        .success {
+            background: rgba(0, 255, 0, 0.2);
+            color: #0f0;
+        }
+        
+        .error {
+            background: rgba(255, 0, 0, 0.2);
+            color: #f00;
+        }
+
+        .color-picker-section {
+            margin: 10px 0;
+            padding: 10px 0;
+            border-top: 1px solid #555;
+        }
+
+        .color-row {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            gap: 10px;
+        }
+
+        .color-row label {
+            min-width: 60px;
+            font-size: 11px;
+        }
+
+        input[type="color"] {
+            width: 40px;
+            height: 25px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .preset-colors {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 2px;
+            margin-top: 5px;
+        }
+
+        .preset-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 2px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .preset-color:hover {
+            border-color: #fff;
+            transform: scale(1.2);
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            gap: 10px;
+        }
+
+        .slider-row label {
+            min-width: 80px;
+            font-size: 11px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 20px;
+            background: #333;
+            outline: none;
+            border-radius: 10px;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .slider-value {
+            min-width: 40px;
+            font-size: 11px;
+            color: #ccc;
+        }
+
+        .audio-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .audio-controls select {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 3px;
+            padding: 4px;
+            font-size: 11px;
+        }
+
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .playback-controls button {
+            background: #555;
+            color: #fff;
+            border: none;
+            border-radius: 3px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+            min-width: 30px;
+        }
+
+        .playback-controls button:hover:not(:disabled) {
+            background: #666;
+        }
+
+        .playback-controls button:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .playback-controls input[type="range"] {
+            flex: 1;
+            height: 16px;
+        }
+
+        #audioTime {
+            font-size: 10px;
+            color: #ccc;
+            min-width: 80px;
+        }
+
+        .audio-settings {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .audio-settings label {
+            font-size: 11px;
+            min-width: 60px;
+        }
+
+        #hotkey-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: monospace;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        #hotkey-indicator.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+
+    <div id="hotkey-indicator"></div>
+
+    <div id="controls">
+        <h3>Pointcloud Sphere</h3>
+        <p><strong>Mouse:</strong> Look around</p>
+        <p><strong>WASD:</strong> Move</p>
+        <p><strong>Space/Shift:</strong> Up/Down</p>
+        <p><strong>Q/E:</strong> Rotate</p>
+        <p><strong>F:</strong> Hide/Show UI</p>
+        <p><strong>P:</strong> Play/Pause Audio</p>
+        <p><strong>Scroll:</strong> Zoom</p>
+        <p><strong>F:</strong> Toggle UI</p>
+
+        <div class="color-picker-section">
+            <h4 style="margin: 0 0 8px 0; color: #fff;">Audio</h4>
+            <div class="audio-controls">
+                <select id="audioSelect" onchange="loadAudio()">
+                    <option value="">Select Audio...</option>
+                </select>
+                <div class="playback-controls">
+                    <button id="playPauseBtn" onclick="togglePlayPause()" disabled>▶</button>
+                    <input type="range" id="audioScrubber" min="0" max="100" value="0" oninput="scrubAudio()" disabled>
+                    <span id="audioTime">0:00 / 0:00</span>
+                </div>
+                <div class="audio-settings">
+                    <label>Reactivity:</label>
+                    <input type="range" id="reactivitySlider" min="0" max="3" step="0.1" value="1" oninput="updateReactivity()">
+                    <span class="slider-value" id="reactivityValue">1.0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="color-picker-section">
+            <h4 style="margin: 0 0 8px 0; color: #fff;">Sphere Settings</h4>
+            <div class="slider-row">
+                <label>Count:</label>
+                <input type="range" id="sphereSlider" min="1" max="10" step="1" value="1" oninput="updateSphereCount()">
+                <span class="slider-value" id="sphereValue">1</span>
+            </div>
+            <div class="audio-settings">
+                <label>Mode:</label>
+                <select id="frequencyMode" onchange="updateFrequencyMode()">
+                    <option value="unified">Unified</option>
+                    <option value="separated">Frequency Split</option>
+                </select>
+            </div>
+            <div class="audio-settings">
+                <label>Arrangement:</label>
+                <select id="sphereArrangement" onchange="updateSphereArrangement()">
+                    <option value="circle">Circle</option>
+                    <option value="quasilinear">Quasilinear</option>
+                    <option value="line">Line</option>
+                    <option value="randomized">Randomized</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="color-picker-section">
+            <h4 style="margin: 0 0 8px 0; color: #fff;">Colors</h4>
+            <div class="color-row">
+                <label>Center:</label>
+                <input type="color" id="centerColor" value="#cc8866" onchange="updateColors()">
+            </div>
+            <div class="color-row">
+                <label>Middle:</label>
+                <input type="color" id="middleColor" value="#996644" onchange="updateColors()">
+            </div>
+            <div class="color-row">
+                <label>Edge:</label>
+                <input type="color" id="edgeColor" value="#663322" onchange="updateColors()">
+            </div>
+            <div class="preset-colors">
+                <div class="preset-color" style="background: linear-gradient(45deg, #cc8866, #996644, #663322)" onclick="setPresetColors('#cc8866', '#996644', '#663322')" title="Original"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #FFD700, #FF8C00, #FF4500)" onclick="setPresetColors('#FFD700', '#FF8C00', '#FF4500')" title="Fire"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #87CEEB, #4682B4, #191970)" onclick="setPresetColors('#87CEEB', '#4682B4', '#191970')" title="Ocean"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #228B22, #006400, #013220)" onclick="setPresetColors('#228B22', '#006400', '#013220')" title="Forest"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #DA70D6, #9932CC, #4B0082)" onclick="setPresetColors('#DA70D6', '#9932CC', '#4B0082')" title="Purple"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #FF1493, #DC143C, #8B008B)" onclick="setPresetColors('#FF1493', '#DC143C', '#8B008B')" title="Pink"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #00CED1, #008B8B, #2F4F4F)" onclick="setPresetColors('#00CED1', '#008B8B', '#2F4F4F')" title="Cyan"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #C0C0C0, #808080, #2F2F2F)" onclick="setPresetColors('#C0C0C0', '#808080', '#2F2F2F')" title="Silver"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #FFD700, #DAA520, #B8860B)" onclick="setPresetColors('#FFD700', '#DAA520', '#B8860B')" title="Gold"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #FF4500, #B22222, #800000)" onclick="setPresetColors('#FF4500', '#B22222', '#800000')" title="Red"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #1E90FF, #0000CD, #000080)" onclick="setPresetColors('#1E90FF', '#0000CD', '#000080')" title="Blue"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #32CD32, #228B22, #006400)" onclick="setPresetColors('#32CD32', '#228B22', '#006400')" title="Green"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #FF7F50, #FF6347, #CD5C5C)" onclick="setPresetColors('#FF7F50', '#FF6347', '#CD5C5C')" title="Coral"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #8A2BE2, #6A0DAD, #4B0082)" onclick="setPresetColors('#8A2BE2', '#6A0DAD', '#4B0082')" title="Violet"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #8B4513, #654321, #2F1B14)" onclick="setPresetColors('#8B4513', '#654321', '#2F1B14')" title="Brown"></div>
+                <div class="preset-color" style="background: linear-gradient(45deg, #FFB6C1, #FF69B4, #FF1493)" onclick="setPresetColors('#FFB6C1', '#FF69B4', '#FF1493')" title="Rose"></div>
+            </div>
+        </div>
+
+        <button onclick="resetCamera()">Reset Camera</button>
+        <button onclick="toggleAnimation()">Toggle Animation</button>
+        <button onclick="exportPLY()">Export PLY</button>
+        <button onclick="exportOBJ()">Export OBJ</button>
+        <button onclick="exportJSON()">Export JSON</button>
+        <button onclick="exportAnimationFrames()">Export Animation Frames</button>
+
+        <div id="exportStatus"></div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+    
+    <!-- Our modules -->
+    <script src="CameraController.js"></script>
+    <script src="Spore.js"></script>
+    
+    <script>
+        // Global variables
+        let scene, camera, renderer, cameraController;
+        let spores = []; // Array to hold multiple spores
+        let animationEnabled = true;
+        let uiMinimized = false;
+
+        // Audio variables
+        let audioContext, analyser, dataArray, audio;
+        let audioReactivity = 1.0;
+        let isPlaying = false;
+        let audioLoaded = false;
+
+        // Frequency separation variables
+        let frequencyMode = 'unified'; // 'unified' or 'separated'
+        let frequencyAnalysers = []; // Array of analysers for each frequency band
+        let frequencyFilters = []; // Array of bandpass filters
+        let sphereArrangement = 'circle'; // 'quasilinear', 'circle', 'randomized', 'line'
+        
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 10, 30);
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('container').appendChild(renderer.domElement);
+            
+            // Create camera controller
+            cameraController = new CameraController(camera, renderer.domElement);
+            
+            // Create the initial spore (pointcloud sphere)
+            createSpores(1);
+            
+            // Add some ambient lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+            scene.add(ambientLight);
+            
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(10, 10, 5);
+            scene.add(directionalLight);
+            
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Handle keyboard shortcuts
+            window.addEventListener('keydown', function(event) {
+                // Prevent default if we're handling the key
+                if (event.code === 'KeyF' || event.code === 'KeyP') {
+                    event.preventDefault();
+                }
+
+                if (!event.repeat) {
+                    if (event.code === 'KeyF') {
+                        toggleUI();
+                        showHotkeyFeedback('F - UI Toggle');
+                    } else if (event.code === 'KeyP') {
+                        const wasPlaying = isPlaying;
+                        togglePlayPause();
+                        // Show feedback based on the action taken
+                        setTimeout(() => {
+                            if (audioLoaded) {
+                                showHotkeyFeedback(`P - ${isPlaying ? 'Playing' : 'Paused'}`);
+                            } else {
+                                showHotkeyFeedback('P - No Audio Selected');
+                            }
+                        }, 50); // Small delay to get updated state
+                    }
+                }
+            }, false);
+
+            // Populate audio dropdown
+            populateAudioDropdown();
+
+            // Start animation loop
+            animate();
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update camera controller
+            cameraController.update();
+            
+            // Update spore animations
+            if (animationEnabled) {
+                const audioData = getAudioData();
+
+                if (frequencyMode === 'separated' && Array.isArray(audioData)) {
+                    // Each sphere gets its own frequency data
+                    spores.forEach((spore, index) => {
+                        const sphereAudioData = audioData[index] || { bass: 0, mid: 0, treble: 0, overall: 0 };
+                        spore.update(sphereAudioData);
+                    });
+                } else {
+                    // Unified mode - all spheres get the same data
+                    spores.forEach(spore => spore.update(audioData));
+                }
+            }
+            
+            // Render
+            renderer.render(scene, camera);
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function resetCamera() {
+            if (cameraController) {
+                cameraController.reset();
+            }
+        }
+        
+        function toggleAnimation() {
+            animationEnabled = !animationEnabled;
+            const button = event.target;
+            button.textContent = animationEnabled ? 'Pause Animation' : 'Resume Animation';
+        }
+
+        function toggleUI() {
+            uiMinimized = !uiMinimized;
+            const controls = document.getElementById('controls');
+            if (uiMinimized) {
+                controls.classList.add('minimized');
+            } else {
+                controls.classList.remove('minimized');
+            }
+        }
+
+        function showHotkeyFeedback(message) {
+            const indicator = document.getElementById('hotkey-indicator');
+            indicator.textContent = message;
+            indicator.classList.add('show');
+
+            // Hide after 2 seconds
+            setTimeout(() => {
+                indicator.classList.remove('show');
+            }, 2000);
+        }
+
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16) / 255,
+                g: parseInt(result[2], 16) / 255,
+                b: parseInt(result[3], 16) / 255
+            } : null;
+        }
+
+        function updateColors() {
+            const centerColor = hexToRgb(document.getElementById('centerColor').value);
+            const middleColor = hexToRgb(document.getElementById('middleColor').value);
+            const edgeColor = hexToRgb(document.getElementById('edgeColor').value);
+
+            spores.forEach(spore => spore.updateColors(centerColor, middleColor, edgeColor));
+        }
+
+        function setPresetColors(center, middle, edge) {
+            document.getElementById('centerColor').value = center;
+            document.getElementById('middleColor').value = middle;
+            document.getElementById('edgeColor').value = edge;
+            updateColors();
+        }
+
+        function createSpores(count) {
+            // Remove existing spores
+            spores.forEach(spore => spore.dispose());
+            spores = [];
+
+            // Create new spores with different positions
+            for (let i = 0; i < count; i++) {
+                const spore = new Spore(scene);
+
+                // Position spheres based on arrangement mode
+                positionSphere(spore, i, count);
+
+                // Add slight random offset to animation timing for variety
+                spore.animationTimeOffset = Math.random() * Math.PI * 2;
+
+                spores.push(spore);
+            }
+
+            // Apply current colors to all spores
+            updateColors();
+        }
+
+        function positionSphere(spore, index, totalCount) {
+            const spacing = 40;
+
+            switch (sphereArrangement) {
+                case 'circle':
+                    if (totalCount === 1) {
+                        spore.pointcloud.position.set(0, 0, 0);
+                    } else {
+                        const angle = (index / totalCount) * Math.PI * 2;
+                        const radius = 30;
+                        spore.pointcloud.position.set(
+                            Math.cos(angle) * radius,
+                            0,
+                            Math.sin(angle) * radius
+                        );
+                    }
+                    break;
+
+                case 'quasilinear':
+                    // Slightly curved line with some randomness
+                    const baseX = (index - (totalCount - 1) / 2) * spacing;
+                    const curve = Math.sin((index / totalCount) * Math.PI) * 15;
+                    const randomOffset = (Math.random() - 0.5) * 10;
+                    spore.pointcloud.position.set(
+                        baseX + randomOffset,
+                        curve,
+                        randomOffset
+                    );
+                    break;
+
+                case 'line':
+                    // Straight line arrangement
+                    const lineX = (index - (totalCount - 1) / 2) * spacing;
+                    spore.pointcloud.position.set(lineX, 0, 0);
+                    break;
+
+                case 'randomized':
+                    // Random cluster within a sphere
+                    const radius = 50;
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.random() * Math.PI;
+                    const r = Math.random() * radius;
+                    spore.pointcloud.position.set(
+                        r * Math.sin(phi) * Math.cos(theta),
+                        r * Math.sin(phi) * Math.sin(theta),
+                        r * Math.cos(phi)
+                    );
+                    break;
+
+                default:
+                    // Fallback to circle
+                    if (totalCount === 1) {
+                        spore.pointcloud.position.set(0, 0, 0);
+                    } else {
+                        const angle = (index / totalCount) * Math.PI * 2;
+                        const radius = 30;
+                        spore.pointcloud.position.set(
+                            Math.cos(angle) * radius,
+                            0,
+                            Math.sin(angle) * radius
+                        );
+                    }
+            }
+        }
+
+        function updateSphereCount() {
+            const slider = document.getElementById('sphereSlider');
+            const valueDisplay = document.getElementById('sphereValue');
+            const newCount = parseInt(slider.value);
+
+            valueDisplay.textContent = newCount;
+            createSpores(newCount);
+        }
+
+        function updateFrequencyMode() {
+            const select = document.getElementById('frequencyMode');
+            frequencyMode = select.value;
+
+            if (frequencyMode === 'separated') {
+                // Force 6 spheres for frequency separation
+                document.getElementById('sphereSlider').value = 6;
+                document.getElementById('sphereValue').textContent = '6';
+                createSpores(6);
+
+                // Disable sphere count slider
+                document.getElementById('sphereSlider').disabled = true;
+            } else {
+                // Re-enable sphere count slider
+                document.getElementById('sphereSlider').disabled = false;
+            }
+        }
+
+        function updateSphereArrangement() {
+            const select = document.getElementById('sphereArrangement');
+            sphereArrangement = select.value;
+
+            // Recreate spheres with new arrangement
+            const currentCount = parseInt(document.getElementById('sphereSlider').value);
+            createSpores(currentCount);
+        }
+
+        // Audio Functions
+        async function populateAudioDropdown() {
+            // List of known audio files - add new files here
+            const audioFiles = [
+                { path: 'assets/quasimusic.mp3', name: 'Quasimusic' },
+                { path: 'assets/THE HELLP - SSX.mp3', name: 'THE HELLP - SSX' },
+                { path: 'assets/Make 1,2 [QdoyQYeydKs].mp3', name: 'Make 1,2' },
+                { path: 'assets/Clair De Lune.mp3', name: 'Clair De Lune' }
+            ];
+
+            const select = document.getElementById('audioSelect');
+
+            // Clear existing options except the first one
+            while (select.children.length > 1) {
+                select.removeChild(select.lastChild);
+            }
+
+            // Add audio files to dropdown
+            for (const audioFile of audioFiles) {
+                // Test if file exists by trying to load it
+                try {
+                    const response = await fetch(audioFile.path, { method: 'HEAD' });
+                    if (response.ok) {
+                        const option = document.createElement('option');
+                        option.value = audioFile.path;
+                        option.textContent = audioFile.name;
+                        select.appendChild(option);
+                    }
+                } catch (error) {
+                    console.log(`Audio file not found: ${audioFile.path}`);
+                }
+            }
+        }
+
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                // Initialize frequency separation system
+                setupFrequencySeparation();
+            }
+        }
+
+        function setupFrequencySeparation() {
+            // Clear existing filters and analysers
+            frequencyFilters = [];
+            frequencyAnalysers = [];
+
+            // Define 6 frequency bands (Hz ranges)
+            const frequencyBands = [
+                { name: 'Sub-Bass', low: 20, high: 60 },      // Deep foundation
+                { name: 'Bass', low: 60, high: 250 },        // Kick drums, bass lines
+                { name: 'Low-Mid', low: 250, high: 500 },    // Lower vocals, guitars
+                { name: 'High-Mid', low: 500, high: 2000 },  // Vocals, lead instruments
+                { name: 'Treble', low: 2000, high: 8000 },   // Cymbals, brightness
+                { name: 'Presence', low: 8000, high: 20000 } // Air, sparkle
+            ];
+
+            // Create bandpass filters and analysers for each frequency band
+            for (let i = 0; i < frequencyBands.length; i++) {
+                const band = frequencyBands[i];
+
+                // Create bandpass filter
+                const lowpass = audioContext.createBiquadFilter();
+                const highpass = audioContext.createBiquadFilter();
+
+                lowpass.type = 'lowpass';
+                lowpass.frequency.value = band.high;
+                lowpass.Q.value = 1;
+
+                highpass.type = 'highpass';
+                highpass.frequency.value = band.low;
+                highpass.Q.value = 1;
+
+                // Chain the filters: highpass -> lowpass
+                highpass.connect(lowpass);
+
+                // Create analyser for this band
+                const bandAnalyser = audioContext.createAnalyser();
+                bandAnalyser.fftSize = 256;
+                lowpass.connect(bandAnalyser);
+
+                frequencyFilters.push({ highpass, lowpass, band });
+                frequencyAnalysers.push(bandAnalyser);
+            }
+        }
+
+        function loadAudio() {
+            const select = document.getElementById('audioSelect');
+            const audioPath = select.value;
+
+            if (!audioPath) {
+                audioLoaded = false;
+                updateAudioControls();
+                return;
+            }
+
+            initAudioContext();
+
+            if (audio) {
+                audio.pause();
+                audio = null;
+            }
+
+            audio = new Audio(audioPath);
+            audio.crossOrigin = "anonymous";
+
+            audio.addEventListener('loadedmetadata', () => {
+                audioLoaded = true;
+                updateAudioControls();
+                updateAudioTime();
+
+                // Connect audio to analyser and frequency filters
+                if (!audio.audioSource) {
+                    audio.audioSource = audioContext.createMediaElementSource(audio);
+                    audio.audioSource.connect(analyser);
+                    analyser.connect(audioContext.destination);
+
+                    // Connect source to all frequency filters
+                    for (let i = 0; i < frequencyFilters.length; i++) {
+                        audio.audioSource.connect(frequencyFilters[i].highpass);
+                    }
+                }
+            });
+
+            audio.addEventListener('timeupdate', updateAudioTime);
+            audio.addEventListener('ended', () => {
+                isPlaying = false;
+                updateAudioControls();
+            });
+
+            audio.load();
+        }
+
+        function togglePlayPause() {
+            if (!audio || !audioLoaded) return;
+
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            if (isPlaying) {
+                audio.pause();
+                isPlaying = false;
+            } else {
+                audio.play();
+                isPlaying = true;
+            }
+
+            updateAudioControls();
+        }
+
+        function scrubAudio() {
+            if (!audio || !audioLoaded) return;
+
+            const scrubber = document.getElementById('audioScrubber');
+            const time = (scrubber.value / 100) * audio.duration;
+            audio.currentTime = time;
+        }
+
+        function updateAudioTime() {
+            if (!audio || !audioLoaded) return;
+
+            const current = audio.currentTime;
+            const duration = audio.duration;
+            const progress = (current / duration) * 100;
+
+            document.getElementById('audioScrubber').value = progress;
+            document.getElementById('audioTime').textContent =
+                `${formatTime(current)} / ${formatTime(duration)}`;
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function updateAudioControls() {
+            const playBtn = document.getElementById('playPauseBtn');
+            const scrubber = document.getElementById('audioScrubber');
+
+            playBtn.disabled = !audioLoaded;
+            scrubber.disabled = !audioLoaded;
+
+            if (audioLoaded) {
+                playBtn.textContent = isPlaying ? '⏸' : '▶';
+            } else {
+                playBtn.textContent = '▶';
+            }
+        }
+
+        function updateReactivity() {
+            const slider = document.getElementById('reactivitySlider');
+            const valueDisplay = document.getElementById('reactivityValue');
+            audioReactivity = parseFloat(slider.value);
+            valueDisplay.textContent = audioReactivity.toFixed(1);
+        }
+
+        function getAudioData() {
+            if (!analyser || !isPlaying) {
+                if (frequencyMode === 'separated') {
+                    return [
+                        { bass: 0, mid: 0, treble: 0, overall: 0 },
+                        { bass: 0, mid: 0, treble: 0, overall: 0 },
+                        { bass: 0, mid: 0, treble: 0, overall: 0 },
+                        { bass: 0, mid: 0, treble: 0, overall: 0 },
+                        { bass: 0, mid: 0, treble: 0, overall: 0 },
+                        { bass: 0, mid: 0, treble: 0, overall: 0 }
+                    ];
+                }
+                return { bass: 0, mid: 0, treble: 0, overall: 0 };
+            }
+
+            if (frequencyMode === 'separated') {
+                // Return frequency-separated data for each sphere
+                const frequencyData = [];
+
+                for (let i = 0; i < frequencyAnalysers.length; i++) {
+                    const analyser = frequencyAnalysers[i];
+                    const bandData = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(bandData);
+
+                    // Calculate average amplitude for this frequency band
+                    let sum = 0;
+                    for (let j = 0; j < bandData.length; j++) {
+                        sum += bandData[j];
+                    }
+                    const amplitude = (sum / bandData.length) / 255;
+
+                    // Each sphere gets its specific frequency as the main driver
+                    const sphereData = {
+                        bass: i === 0 || i === 1 ? amplitude : amplitude * 0.3,  // Sub-bass and bass spheres
+                        mid: i === 2 || i === 3 ? amplitude : amplitude * 0.3,   // Low-mid and high-mid spheres
+                        treble: i === 4 || i === 5 ? amplitude : amplitude * 0.3, // Treble and presence spheres
+                        overall: amplitude
+                    };
+
+                    frequencyData.push({
+                        bass: sphereData.bass * audioReactivity,
+                        mid: sphereData.mid * audioReactivity,
+                        treble: sphereData.treble * audioReactivity,
+                        overall: sphereData.overall * audioReactivity
+                    });
+                }
+
+                return frequencyData;
+            } else {
+                // Unified mode - original behavior
+                analyser.getByteFrequencyData(dataArray);
+
+                // Split frequency data into bass, mid, treble
+                const bassEnd = Math.floor(dataArray.length * 0.1);
+                const midEnd = Math.floor(dataArray.length * 0.4);
+
+                let bass = 0, mid = 0, treble = 0;
+
+                // Calculate bass (0-10% of frequency range)
+                for (let i = 0; i < bassEnd; i++) {
+                    bass += dataArray[i];
+                }
+                bass = (bass / bassEnd) / 255;
+
+                // Calculate mid (10-40% of frequency range)
+                for (let i = bassEnd; i < midEnd; i++) {
+                    mid += dataArray[i];
+                }
+                mid = (mid / (midEnd - bassEnd)) / 255;
+
+                // Calculate treble (40-100% of frequency range)
+                for (let i = midEnd; i < dataArray.length; i++) {
+                    treble += dataArray[i];
+                }
+                treble = (treble / (dataArray.length - midEnd)) / 255;
+
+                // Overall amplitude
+                const overall = (bass + mid + treble) / 3;
+
+                return {
+                    bass: bass * audioReactivity,
+                    mid: mid * audioReactivity,
+                    treble: treble * audioReactivity,
+                    overall: overall * audioReactivity
+                };
+            }
+        }
+        
+        function showExportStatus(message, isSuccess = true) {
+            const statusDiv = document.getElementById('exportStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.className = isSuccess ? 'success' : 'error';
+            statusDiv.textContent = message;
+
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, isSuccess ? 3000 : 5000);
+        }
+
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function exportPLY() {
+            if (spores.length === 0) return;
+
+            // Calculate total particle count across all spores
+            let totalParticles = 0;
+            spores.forEach(spore => totalParticles += spore.particleCount);
+
+            let plyContent = `ply
+format ascii 1.0
+element vertex ${totalParticles}
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+end_header
+`;
+
+            // Export all spores
+            spores.forEach(spore => {
+                const positions = spore.geometry.attributes.position.array;
+                const colors = spore.geometry.attributes.color.array;
+                const sporePosition = spore.pointcloud.position;
+
+                for (let i = 0; i < spore.particleCount; i++) {
+                    const idx = i * 3;
+                    const x = positions[idx] + sporePosition.x;
+                    const y = positions[idx + 1] + sporePosition.y;
+                    const z = positions[idx + 2] + sporePosition.z;
+                    const r = Math.floor(colors[idx] * 255);
+                    const g = Math.floor(colors[idx + 1] * 255);
+                    const b = Math.floor(colors[idx + 2] * 255);
+
+                    plyContent += `${x} ${y} ${z} ${r} ${g} ${b}\n`;
+                }
+            });
+
+            downloadFile(plyContent, 'spore_pointcloud.ply', 'text/plain');
+            showExportStatus('PLY export successful! Compatible with MeshLab, CloudCompare, Blender.');
+        }
+
+        function exportOBJ() {
+            if (!spore) return;
+
+            const positions = spore.geometry.attributes.position.array;
+            const particleCount = spore.particleCount;
+
+            let objContent = `# Spore Pointcloud Export
+# ${particleCount} vertices
+`;
+
+            for (let i = 0; i < particleCount; i++) {
+                const idx = i * 3;
+                const x = positions[idx];
+                const y = positions[idx + 1];
+                const z = positions[idx + 2];
+
+                objContent += `v ${x} ${y} ${z}\n`;
+            }
+
+            downloadFile(objContent, 'spore_pointcloud.obj', 'text/plain');
+            showExportStatus('OBJ export successful! Compatible with most 3D software.');
+        }
+
+        function exportJSON() {
+            if (!spore) return;
+
+            const positions = spore.geometry.attributes.position.array;
+            const colors = spore.geometry.attributes.color.array;
+            const sizes = spore.geometry.attributes.size.array;
+            const particleCount = spore.particleCount;
+
+            const exportData = {
+                format: "Spore Pointcloud",
+                version: "1.0",
+                particleCount: particleCount,
+                animationState: spore.getCurrentState(),
+                particles: []
+            };
+
+            for (let i = 0; i < particleCount; i++) {
+                const idx = i * 3;
+                exportData.particles.push({
+                    position: [positions[idx], positions[idx + 1], positions[idx + 2]],
+                    color: [colors[idx], colors[idx + 1], colors[idx + 2]],
+                    size: sizes[i]
+                });
+            }
+
+            const jsonContent = JSON.stringify(exportData, null, 2);
+            downloadFile(jsonContent, 'spore_pointcloud.json', 'application/json');
+            showExportStatus('JSON export successful! Contains full particle data and animation state.');
+        }
+
+        function exportAnimationFrames() {
+            if (!spore) return;
+
+            showExportStatus('Exporting animation frames... This may take a moment.', true);
+
+            const frameCount = 60; // 60 frames for the full animation
+            const originalTime = spore.animationTime;
+            const frames = [];
+
+            // Generate frames
+            for (let frame = 0; frame < frameCount; frame++) {
+                const time = (frame / frameCount) * spore.animationDuration;
+                spore.setAnimationTime(time);
+
+                const positions = spore.geometry.attributes.position.array;
+                const colors = spore.geometry.attributes.color.array;
+                const sizes = spore.geometry.attributes.size.array;
+
+                const frameData = {
+                    frame: frame,
+                    time: time,
+                    progress: frame / frameCount,
+                    particles: []
+                };
+
+                for (let i = 0; i < spore.particleCount; i++) {
+                    const idx = i * 3;
+                    frameData.particles.push({
+                        position: [positions[idx], positions[idx + 1], positions[idx + 2]],
+                        color: [colors[idx], colors[idx + 1], colors[idx + 2]],
+                        size: sizes[i]
+                    });
+                }
+
+                frames.push(frameData);
+            }
+
+            // Restore original time
+            spore.setAnimationTime(originalTime);
+
+            const animationData = {
+                format: "Spore Animation Frames",
+                version: "1.0",
+                particleCount: spore.particleCount,
+                frameCount: frameCount,
+                duration: spore.animationDuration,
+                frames: frames
+            };
+
+            const jsonContent = JSON.stringify(animationData, null, 2);
+            downloadFile(jsonContent, 'spore_animation_frames.json', 'application/json');
+            showExportStatus('Animation frames exported! 60 frames of the full pulse cycle.');
+        }
+        
+        // Initialize when page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
