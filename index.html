@@ -253,6 +253,20 @@
             opacity: 1;
             transform: translateY(0);
         }
+
+        #micToggleBtn {
+            background: #333;
+            transition: background 0.3s ease;
+        }
+
+        #micToggleBtn.active {
+            background: #2d5016;
+            border-color: #4a7c2a;
+        }
+
+        #micToggleBtn.active:hover {
+            background: #3d6b1f;
+        }
     </style>
 </head>
 <body>
@@ -274,6 +288,7 @@
         <div class="color-picker-section">
             <h4 style="margin: 0 0 8px 0; color: #fff;">Audio</h4>
             <div class="audio-controls">
+                <button id="micToggleBtn" onclick="toggleMicrophone()">🎤 Enable Microphone</button>
                 <select id="audioSelect" onchange="loadAudio()">
                     <option value="">Select Audio...</option>
                 </select>
@@ -302,6 +317,7 @@
                 <select id="frequencyMode" onchange="updateFrequencyMode()">
                     <option value="unified">Unified</option>
                     <option value="separated">Frequency Split</option>
+                    <option value="frequencySphere">Frequency Sphere</option>
                 </select>
             </div>
             <div class="audio-settings">
@@ -378,6 +394,13 @@
         let audioReactivity = 1.0;
         let isPlaying = false;
         let audioLoaded = false;
+
+        // Microphone variables
+        let microphoneActive = false;
+        let microphoneStream = null;
+        let microphoneSource = null;
+        let microphoneAnalyser = null;
+        let microphoneDataArray = null;
 
         // Frequency separation variables
         let frequencyMode = 'unified'; // 'unified' or 'separated'
@@ -459,17 +482,23 @@
             
             // Update spore animations
             if (animationEnabled) {
-                const audioData = getAudioData();
-
-                if (frequencyMode === 'separated' && Array.isArray(audioData)) {
-                    // Each sphere gets its own frequency data
-                    spores.forEach((spore, index) => {
-                        const sphereAudioData = audioData[index] || { bass: 0, mid: 0, treble: 0, overall: 0 };
-                        spore.update(sphereAudioData);
-                    });
+                if (frequencyMode === 'frequencySphere') {
+                    // Frequency Sphere mode - use detailed frequency data
+                    const detailedAudioData = getDetailedFrequencyData();
+                    spores.forEach(spore => spore.updateFrequencySphere(detailedAudioData));
                 } else {
-                    // Unified mode - all spheres get the same data
-                    spores.forEach(spore => spore.update(audioData));
+                    const audioData = getAudioData();
+
+                    if (frequencyMode === 'separated' && Array.isArray(audioData)) {
+                        // Each sphere gets its own frequency data
+                        spores.forEach((spore, index) => {
+                            const sphereAudioData = audioData[index] || { bass: 0, mid: 0, treble: 0, overall: 0 };
+                            spore.update(sphereAudioData);
+                        });
+                    } else {
+                        // Unified mode - all spheres get the same data
+                        spores.forEach(spore => spore.update(audioData));
+                    }
                 }
             }
             
@@ -554,6 +583,12 @@
 
                 // Add slight random offset to animation timing for variety
                 spore.animationTimeOffset = Math.random() * Math.PI * 2;
+
+                // Set mode and initialize frequency assignments if in Frequency Sphere mode
+                spore.mode = frequencyMode;
+                if (frequencyMode === 'frequencySphere') {
+                    spore.assignParticleFrequencies();
+                }
 
                 spores.push(spore);
             }
@@ -648,9 +683,23 @@
 
                 // Disable sphere count slider
                 document.getElementById('sphereSlider').disabled = true;
-            } else {
-                // Re-enable sphere count slider
+            } else if (frequencyMode === 'frequencySphere') {
+                // Frequency Sphere mode - enable slider and initialize frequency assignments
                 document.getElementById('sphereSlider').disabled = false;
+
+                // Assign frequency bands to all existing spores
+                spores.forEach(spore => {
+                    spore.mode = 'frequencySphere';
+                    spore.assignParticleFrequencies();
+                });
+            } else {
+                // Unified mode - re-enable sphere count slider
+                document.getElementById('sphereSlider').disabled = false;
+
+                // Set mode back to unified
+                spores.forEach(spore => {
+                    spore.mode = 'unified';
+                });
             }
         }
 
@@ -848,13 +897,20 @@
             const playBtn = document.getElementById('playPauseBtn');
             const scrubber = document.getElementById('audioScrubber');
 
-            playBtn.disabled = !audioLoaded;
-            scrubber.disabled = !audioLoaded;
-
-            if (audioLoaded) {
-                playBtn.textContent = isPlaying ? '⏸' : '▶';
-            } else {
+            // Disable controls if microphone is active
+            if (microphoneActive) {
+                playBtn.disabled = true;
+                scrubber.disabled = true;
                 playBtn.textContent = '▶';
+            } else {
+                playBtn.disabled = !audioLoaded;
+                scrubber.disabled = !audioLoaded;
+
+                if (audioLoaded) {
+                    playBtn.textContent = isPlaying ? '⏸' : '▶';
+                } else {
+                    playBtn.textContent = '▶';
+                }
             }
         }
 
@@ -865,8 +921,165 @@
             valueDisplay.textContent = audioReactivity.toFixed(1);
         }
 
+        function stopMicrophone() {
+            if (microphoneStream) {
+                // Stop all tracks in the stream
+                microphoneStream.getTracks().forEach(track => track.stop());
+                microphoneStream = null;
+            }
+
+            if (microphoneSource) {
+                microphoneSource.disconnect();
+                microphoneSource = null;
+            }
+
+            if (microphoneAnalyser) {
+                microphoneAnalyser.disconnect();
+                microphoneAnalyser = null;
+            }
+
+            microphoneDataArray = null;
+            microphoneActive = false;
+        }
+
+        async function toggleMicrophone() {
+            const micBtn = document.getElementById('micToggleBtn');
+
+            if (microphoneActive) {
+                // Disable microphone
+                stopMicrophone();
+                micBtn.textContent = '🎤 Enable Microphone';
+                micBtn.classList.remove('active');
+
+                // Re-enable file audio controls
+                document.getElementById('audioSelect').disabled = false;
+                updateAudioControls();
+
+                showExportStatus('Microphone disabled', true);
+            } else {
+                // Enable microphone
+                try {
+                    // Initialize audio context if needed
+                    initAudioContext();
+
+                    // Request microphone access
+                    microphoneStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: false,
+                            noiseSuppression: false,
+                            autoGainControl: false
+                        }
+                    });
+
+                    // Create audio source from microphone
+                    microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
+
+                    // Create analyser for microphone
+                    microphoneAnalyser = audioContext.createAnalyser();
+                    microphoneAnalyser.fftSize = 256;
+                    microphoneDataArray = new Uint8Array(microphoneAnalyser.frequencyBinCount);
+
+                    // Connect microphone to analyser
+                    microphoneSource.connect(microphoneAnalyser);
+                    // Note: We don't connect to destination to avoid feedback
+
+                    microphoneActive = true;
+                    micBtn.textContent = '🎤 Microphone Active';
+                    micBtn.classList.add('active');
+
+                    // Disable file audio controls
+                    document.getElementById('audioSelect').disabled = true;
+                    document.getElementById('playPauseBtn').disabled = true;
+                    document.getElementById('audioScrubber').disabled = true;
+
+                    // Pause any playing audio
+                    if (audio && isPlaying) {
+                        audio.pause();
+                        isPlaying = false;
+                        updateAudioControls();
+                    }
+
+                    showExportStatus('Microphone active - speak or play music!', true);
+
+                } catch (error) {
+                    console.error('Microphone access error:', error);
+
+                    let errorMessage = 'Microphone access failed: ';
+                    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                        errorMessage += 'Permission denied. Please allow microphone access.';
+                    } else if (error.name === 'NotFoundError') {
+                        errorMessage += 'No microphone found.';
+                    } else if (error.name === 'NotSupportedError') {
+                        errorMessage += 'Microphone not supported. Try using HTTPS or localhost.';
+                    } else {
+                        errorMessage += error.message;
+                    }
+
+                    showExportStatus(errorMessage, false);
+                    stopMicrophone();
+                    micBtn.textContent = '🎤 Enable Microphone';
+                    micBtn.classList.remove('active');
+                }
+            }
+        }
+
+        function getDetailedFrequencyData() {
+            // Returns 10 frequency bands for Frequency Sphere mode
+            // Works with both microphone and file audio
+            const activeAnalyser = microphoneActive ? microphoneAnalyser : analyser;
+            const activeDataArray = microphoneActive ? microphoneDataArray : dataArray;
+            const isActive = microphoneActive || isPlaying;
+
+            if (!activeAnalyser || !isActive) {
+                return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+            }
+
+            activeAnalyser.getByteFrequencyData(activeDataArray);
+            const bufferLength = activeDataArray.length;
+
+            // Define 10 frequency bands (approximate ranges based on FFT bins)
+            // Assuming sample rate of 44100 Hz and FFT size of 256
+            // Each bin represents ~172 Hz (44100 / 256)
+            const bands = [
+                { start: 0, end: Math.floor(bufferLength * 0.05) },    // Sub-Bass: 0-5%
+                { start: Math.floor(bufferLength * 0.05), end: Math.floor(bufferLength * 0.10) },  // Bass: 5-10%
+                { start: Math.floor(bufferLength * 0.10), end: Math.floor(bufferLength * 0.15) },  // Low-Mid 1: 10-15%
+                { start: Math.floor(bufferLength * 0.15), end: Math.floor(bufferLength * 0.25) },  // Low-Mid 2: 15-25%
+                { start: Math.floor(bufferLength * 0.25), end: Math.floor(bufferLength * 0.35) },  // Mid 1: 25-35%
+                { start: Math.floor(bufferLength * 0.35), end: Math.floor(bufferLength * 0.50) },  // Mid 2: 35-50%
+                { start: Math.floor(bufferLength * 0.50), end: Math.floor(bufferLength * 0.65) },  // High-Mid: 50-65%
+                { start: Math.floor(bufferLength * 0.65), end: Math.floor(bufferLength * 0.80) },  // Treble 1: 65-80%
+                { start: Math.floor(bufferLength * 0.80), end: Math.floor(bufferLength * 0.92) },  // Treble 2: 80-92%
+                { start: Math.floor(bufferLength * 0.92), end: bufferLength }  // Presence: 92-100%
+            ];
+
+            const frequencyBands = [];
+
+            for (let i = 0; i < bands.length; i++) {
+                const band = bands[i];
+                let sum = 0;
+                let count = 0;
+
+                for (let j = band.start; j < band.end; j++) {
+                    sum += activeDataArray[j];
+                    count++;
+                }
+
+                // Normalize to 0-1 range and apply reactivity
+                const amplitude = count > 0 ? (sum / count) / 255 : 0;
+                frequencyBands.push(amplitude * audioReactivity);
+            }
+
+            return frequencyBands;
+        }
+
         function getAudioData() {
-            if (!analyser || !isPlaying) {
+            // Use microphone if active, otherwise use file audio
+            const activeAnalyser = microphoneActive ? microphoneAnalyser : analyser;
+            const activeDataArray = microphoneActive ? microphoneDataArray : dataArray;
+            const isActive = microphoneActive || isPlaying;
+
+            if (!activeAnalyser || !isActive) {
                 if (frequencyMode === 'separated') {
                     return [
                         { bass: 0, mid: 0, treble: 0, overall: 0 },
@@ -880,8 +1093,9 @@
                 return { bass: 0, mid: 0, treble: 0, overall: 0 };
             }
 
-            if (frequencyMode === 'separated') {
+            if (frequencyMode === 'separated' && !microphoneActive) {
                 // Return frequency-separated data for each sphere
+                // Note: Frequency separation only works with file audio, not microphone
                 const frequencyData = [];
 
                 for (let i = 0; i < frequencyAnalysers.length; i++) {
@@ -914,32 +1128,32 @@
 
                 return frequencyData;
             } else {
-                // Unified mode - original behavior
-                analyser.getByteFrequencyData(dataArray);
+                // Unified mode - works with both file audio and microphone
+                activeAnalyser.getByteFrequencyData(activeDataArray);
 
                 // Split frequency data into bass, mid, treble
-                const bassEnd = Math.floor(dataArray.length * 0.1);
-                const midEnd = Math.floor(dataArray.length * 0.4);
+                const bassEnd = Math.floor(activeDataArray.length * 0.1);
+                const midEnd = Math.floor(activeDataArray.length * 0.4);
 
                 let bass = 0, mid = 0, treble = 0;
 
                 // Calculate bass (0-10% of frequency range)
                 for (let i = 0; i < bassEnd; i++) {
-                    bass += dataArray[i];
+                    bass += activeDataArray[i];
                 }
                 bass = (bass / bassEnd) / 255;
 
                 // Calculate mid (10-40% of frequency range)
                 for (let i = bassEnd; i < midEnd; i++) {
-                    mid += dataArray[i];
+                    mid += activeDataArray[i];
                 }
                 mid = (mid / (midEnd - bassEnd)) / 255;
 
                 // Calculate treble (40-100% of frequency range)
-                for (let i = midEnd; i < dataArray.length; i++) {
-                    treble += dataArray[i];
+                for (let i = midEnd; i < activeDataArray.length; i++) {
+                    treble += activeDataArray[i];
                 }
-                treble = (treble / (dataArray.length - midEnd)) / 255;
+                treble = (treble / (activeDataArray.length - midEnd)) / 255;
 
                 // Overall amplitude
                 const overall = (bass + mid + treble) / 3;

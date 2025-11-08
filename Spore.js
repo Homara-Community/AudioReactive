@@ -2,7 +2,7 @@ class Spore {
     constructor(scene, particleCount = 8000) {
         this.scene = scene;
         this.particleCount = particleCount;
-        
+
         // Animation properties
         this.animationTime = 0;
         this.animationTimeOffset = 0; // For variety between multiple spheres
@@ -10,19 +10,24 @@ class Spore {
         this.baseRadius = 10;
         this.maxRadius = 25;
         this.minRadius = 5;
-        
+
         // Store original positions for animation
         this.originalPositions = [];
         this.currentPositions = [];
+
+        // Frequency Sphere mode properties
+        this.mode = 'unified'; // 'unified', 'separated', or 'frequencySphere'
+        this.particleFrequencyAssignments = []; // Which frequency band each particle responds to
+        this.particleDisplacements = []; // Current displacement for each particle (for smooth return)
 
         // Color settings
         this.centerColor = { r: 0.8, g: 0.53, b: 0.4 }; // #cc8866
         this.middleColor = { r: 0.6, g: 0.4, b: 0.27 }; // #996644
         this.edgeColor = { r: 0.4, g: 0.2, b: 0.13 };   // #663322
-        
+
         // Create the pointcloud
         this.createPointcloud();
-        
+
         // Add to scene
         this.scene.add(this.pointcloud);
     }
@@ -108,7 +113,94 @@ class Spore {
         this.geometry = geometry;
         this.material = material;
     }
-    
+
+    assignParticleFrequencies() {
+        // Assign each particle to a random frequency band (0-9)
+        this.particleFrequencyAssignments = [];
+        this.particleDisplacements = [];
+
+        for (let i = 0; i < this.particleCount; i++) {
+            // Randomly assign to one of 10 frequency bands
+            const frequencyBand = Math.floor(Math.random() * 10);
+            this.particleFrequencyAssignments.push(frequencyBand);
+
+            // Initialize displacement to 0
+            this.particleDisplacements.push(0);
+        }
+    }
+
+    updateFrequencySphere(detailedAudioData) {
+        // Frequency Sphere mode: particles stay at base radius with jitter,
+        // and fly outward based on their assigned frequency band
+
+        this.animationTime += 0.016; // Assuming 60fps
+
+        const positions = this.geometry.attributes.position.array;
+
+        // Frequency Sphere mode parameters
+        const MAX_DISPLACEMENT = 4.0;
+        const IDLE_JITTER_AMOUNT = 0.08;
+        const SNAP_BACK_SPEED = 0.15;
+
+        for (let i = 0; i < this.particleCount; i++) {
+            const originalPos = this.originalPositions[i];
+            const index = i * 3;
+
+            // Get this particle's assigned frequency band
+            const frequencyBand = this.particleFrequencyAssignments[i];
+            const amplitude = detailedAudioData[frequencyBand] || 0;
+
+            // Calculate target displacement based on frequency amplitude
+            const targetDisplacement = amplitude * MAX_DISPLACEMENT;
+
+            // Smooth interpolation towards target (snap back effect)
+            this.particleDisplacements[i] += (targetDisplacement - this.particleDisplacements[i]) * SNAP_BACK_SPEED;
+
+            // Add gentle jitter when idle
+            const jitterX = Math.sin(this.animationTime * 2.0 + originalPos.x * 0.5) * IDLE_JITTER_AMOUNT;
+            const jitterY = Math.sin(this.animationTime * 2.3 + originalPos.y * 0.5) * IDLE_JITTER_AMOUNT;
+            const jitterZ = Math.sin(this.animationTime * 1.7 + originalPos.z * 0.5) * IDLE_JITTER_AMOUNT;
+
+            // Calculate direction from center (normalized)
+            const direction = originalPos.clone().normalize();
+
+            // Apply displacement outward along the direction
+            const displacedPos = originalPos.clone().add(
+                direction.multiplyScalar(this.particleDisplacements[i])
+            );
+
+            // Add jitter
+            displacedPos.x += jitterX;
+            displacedPos.y += jitterY;
+            displacedPos.z += jitterZ;
+
+            // Update positions
+            positions[index] = displacedPos.x;
+            positions[index + 1] = displacedPos.y;
+            positions[index + 2] = displacedPos.z;
+
+            // Store current position
+            this.currentPositions[i].copy(displacedPos);
+        }
+
+        // Mark positions as needing update
+        this.geometry.attributes.position.needsUpdate = true;
+
+        // Update particle sizes with subtle variation
+        const sizes = this.geometry.attributes.size.array;
+        for (let i = 0; i < this.particleCount; i++) {
+            const baseSizeVariation = 1.0 + Math.random() * 2.0;
+            const frequencyBand = this.particleFrequencyAssignments[i];
+            const amplitude = detailedAudioData[frequencyBand] || 0;
+            const sizeMultiplier = 0.8 + amplitude * 0.4;
+            sizes[i] = baseSizeVariation * sizeMultiplier;
+        }
+        this.geometry.attributes.size.needsUpdate = true;
+
+        // Subtle opacity variation
+        this.material.opacity = 0.7 + Math.sin(this.animationTime * 0.5) * 0.1;
+    }
+
     update(audioData = null) {
         // Update animation time
         this.animationTime += 0.016; // Assuming 60fps
